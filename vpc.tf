@@ -13,16 +13,27 @@ resource "aws_internet_gateway" "myvpc" {
 #Creation of Public Subnet
 resource "aws_subnet" "public_subnet_us-west-2a" {
   vpc_id = aws_vpc.my_vpc_01.id
-  cidr_block        = var.public_subnet_cidr
+  cidr_block        = var.public_subnet_cidr_2a
   availability_zone = "us-west-2a"
   tags = {
-     Name = "Public Subnet"
+     Name = "Public Subnet_2a"
      AZ = "us-west-2a"
          }
 }
 
+resource "aws_subnet" "public_subnet_us-west-2b" {
+  vpc_id = aws_vpc.my_vpc_01.id
+  cidr_block        = var.public_subnet_cidr_2b
+  availability_zone = "us-west-2b"
+  tags = {
+     Name = "Public Subnet_2b"
+     AZ = "us-west-2b"
+         }
+}
+
+
 #Creation of Routetable for public subnet
-resource "aws_route_table" "public_rt_us-west-2a" {
+resource "aws_route_table" "public_rt" {
   vpc_id = aws_vpc.my_vpc_01.id
   route {
     cidr_block = "0.0.0.0/0"
@@ -33,10 +44,17 @@ resource "aws_route_table" "public_rt_us-west-2a" {
   }
 }
 
-#Association of RT to public subnet
-resource "aws_route_table_association" "associate_public_rt" {
+#Association of RT to public subnet -2a
+resource "aws_route_table_association" "associate_public_rt_2a" {
   subnet_id      = aws_subnet.public_subnet_us-west-2a.id
-  route_table_id = aws_route_table.public_rt_us-west-2a.id
+  route_table_id = aws_route_table.public_rt.id
+}
+
+
+#Association of RT to public subnet -2a
+resource "aws_route_table_association" "associate_public_rt_2b" {
+  subnet_id      = aws_subnet.public_subnet_us-west-2b.id
+  route_table_id = aws_route_table.public_rt.id
 }
 
 #--------------------------------------------End of Public Subnet Block----------------------------------------
@@ -44,18 +62,30 @@ resource "aws_route_table_association" "associate_public_rt" {
 #--------------------------------------------Start of Private Subnet Block-------------------------------------
 
 #Creation of Private Subnet
-resource "aws_subnet" "private_subnet_us-west-2b" {
+resource "aws_subnet" "private_subnet_us-west-2c" {
   vpc_id = aws_vpc.my_vpc_01.id
-  cidr_block        = var.private_subnet_cidr
-  availability_zone = "us-west-2b"
+  cidr_block        = var.private_subnet_cidr_2c
+  availability_zone = "us-west-2c"
   tags = {
-     Name = "Private Subnet"
-     AZ = "us-west-2b"
+     Name = "Private Subnet_2c"
+     AZ = "us-west-2c"
          }
 }
 
+resource "aws_subnet" "private_subnet_us-west-2d" {
+  vpc_id = aws_vpc.my_vpc_01.id
+  cidr_block        = var.private_subnet_cidr_2d
+  availability_zone = "us-west-2d"
+  tags = {
+     Name = "Private Subnet_2d"
+     AZ = "us-west-2d"
+         }
+}
+
+
+
 #Creation of Routetable for private subnet
-resource "aws_route_table" "private_rt_us-west-2b" {
+resource "aws_route_table" "private_rt" {
   vpc_id = aws_vpc.my_vpc_01.id
   tags = {
     "Name" = "Private RT"
@@ -64,30 +94,65 @@ resource "aws_route_table" "private_rt_us-west-2b" {
 }
 
 #Association of RT to private subnet
-resource "aws_route_table_association" "associate_private_rt" {
-  subnet_id      = aws_subnet.private_subnet_us-west-2b.id
-  route_table_id = aws_route_table.private_rt_us-west-2b.id
+resource "aws_route_table_association" "associate_private_rt_2c" {
+  subnet_id      = aws_subnet.private_subnet_us-west-2c.id
+  route_table_id = aws_route_table.private_rt.id
+}
+
+#Association of RT to private subnet
+resource "aws_route_table_association" "associate_private_rt_2d" {
+  subnet_id      = aws_subnet.private_subnet_us-west-2d.id
+  route_table_id = aws_route_table.private_rt.id
 }
 
 #--------------------------------------------End of Private Subnet Block-------------------------------------
 
+#--------------------------------------------Creation of NAT ------------------------------------------------
+
+# resource "aws_instance" "nat_instance"{
+#   ami                    = ""
+#   availability_zone = "us-west-2a"
+#   instance_type = "t2.micro"
+#   key_name = var.aws_key_name
+#   vpc_security_group_ids = 
+# }
+
+#--------------------------------------------Creation of Key Pair for Ec2 Instance---------------------
+
+resource "aws_key_pair" "ec2-key" {
+  key_name   = "ec2-key"
+  public_key = tls_private_key.rsa.public_key_openssh
+}
+
+resource "tls_private_key" "rsa" {
+  algorithm = "RSA"
+  rsa_bits  = 4096
+}
+
+resource "local_file" "ec2-key" {
+    content  = tls_private_key.rsa.private_key_pem
+    filename = "ec2key"
+}
+
+
 #--------------------------------------------Creation of ec2 instance with public Subnet---------------------
 resource "aws_instance" "web_instance" {
-  ami           = "ami-0f1a5f5ada0e7da53"
-  instance_type = "t2.micro"
-  key_name      = "Myec2Keypair"
+  ami           = "ami-014992d032c40b60a"
+  instance_type = "t2.medium"
+  key_name      = "ec2-key"
 
   subnet_id                   = aws_subnet.public_subnet_us-west-2a.id
   vpc_security_group_ids      = [aws_security_group.sg_webserver.id]
   associate_public_ip_address = true
 
-  user_data = <<-EOF
-  #!/bin/bash -ex
-
-  amazon-linux-extras install nginx1 -y
-  systemctl enable nginx
-  systemctl start nginx
-  EOF
+   user_data = <<-EOF
+   #!/bin/bash -ex
+   cd /home/ec2-user      
+   mkdir myagent && cd myagent
+   yum install wget -y
+   wget https://vstsagentpackage.azureedge.net/agent/3.241.0/vsts-agent-linux-x64-3.241.0.tar.gz
+   tar zxvf vsts-agent-linux-x64-3.241.0.tar.gz
+   EOF
 
   tags = {
     "Name" : "MyterraformEc2"
